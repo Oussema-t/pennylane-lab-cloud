@@ -40,10 +40,12 @@ h3{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;le
 .gate-chip.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset;}
 .gate-chip:active{cursor:grabbing;}
 .grid-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface-2);}
+.lanes{position:relative;}
 .lane{display:flex;align-items:center;margin:6px 0;}
-.qhead{width:96px;display:flex;align-items:center;gap:8px;}
-.qlabel{font-weight:700;color:var(--accent-2);}
-.mtoggle{font-size:10px;font-weight:700;letter-spacing:.4px;border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:6px;padding:3px 7px;cursor:pointer;text-transform:uppercase;}
+.qhead{width:112px;display:flex;align-items:center;gap:8px;}
+.qlabel{font-weight:700;color:var(--accent-2);font-size:16px;}
+.mtoggle{font-size:10px;font-weight:700;letter-spacing:.4px;border:1px solid var(--accent-2);background:rgba(34,211,238,.10);color:var(--accent-2);border-radius:999px;padding:4px 9px;cursor:pointer;text-transform:uppercase;white-space:nowrap;}
+.mtoggle:hover{filter:brightness(1.2);}
 .mtoggle.on{border-color:var(--good);color:#06281b;background:var(--good);}
 .cells{display:flex;position:relative;}
 .cell{width:56px;height:48px;margin:0 4px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;}
@@ -52,9 +54,9 @@ h3{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;le
 .cell::before{content:"";position:absolute;left:-4px;right:-4px;top:50%;height:2px;background:var(--line);z-index:0;}
 .lane.measured .cell::before{background:rgba(52,211,153,.5);}
 .lane.measured .qlabel{color:var(--good);}
-.vlink{position:absolute;width:2px;background:var(--accent-2);left:50%;transform:translateX(-50%);z-index:1;pointer-events:none;}
+.vlink{position:absolute;width:3px;background:var(--accent-2);border-radius:2px;z-index:1;pointer-events:none;}
 .placed{position:relative;z-index:2;background:var(--accent);color:#fff;border-radius:8px;min-width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;padding:0 6px;cursor:pointer;}
-.placed.two{background:transparent;color:var(--accent-2);font-size:20px;}
+.placed.two{background:transparent;color:var(--accent-2);font-size:22px;}
 .placed.ghost{opacity:.4;}
 .angle{font-size:9px;margin-left:4px;opacity:.85;}
 .col-add{margin-top:10px;}
@@ -94,7 +96,7 @@ canvas{background:var(--surface-2);border:1px solid var(--line);border-radius:10
 <section class="panel active" id="panel-lab">
 <div class="card">
 <h2>Circuit builder</h2>
-<p class="hint">Drag a gate onto any qubit at any time step, or click a gate then click a cell. For CNOT / CZ / SWAP, place it on the control qubit, then click the target qubit in the same column — a line connects control and target. Click a placed rotation (RX/RY/RZ) to set its angle; right-click a gate to remove it. Use the <b>measure</b> toggle next to a qubit to choose which qubits to read out — measured qubits are highlighted everywhere. If you toggle none, all qubits are shown.</p>
+<p class="hint">Drag a gate onto any qubit at any time step, or click a gate then click a cell. For CNOT / CZ / SWAP, place it on the control qubit, then click the target qubit in the same column — a cyan line connects control and target. Click a placed rotation (RX/RY/RZ) to set its angle; right-click a gate to remove it. Use the cyan <b>measure</b> button next to a qubit to choose which qubits to read out — measured qubits turn green and are highlighted everywhere. If you select none, all qubits are shown.</p>
 <div class="toolbar">
 <span class="checkbox">Qubits <span class="stepper"><button id="q-minus">−</button><span id="q-val">2</span><button id="q-plus">+</button></span></span>
 <label class="checkbox"><input type="checkbox" id="autorun" checked> auto-run</label>
@@ -106,7 +108,7 @@ canvas{background:var(--surface-2);border:1px solid var(--line);border-radius:10
 <div class="palette" id="pal1"></div>
 <h3>2-qubit (controlled) gates</h3>
 <div class="palette" id="pal2"></div>
-<div class="grid-wrap"><div id="lanes"></div><button class="btn ghost col-add" id="add-col">+ time step</button></div>
+<div class="grid-wrap"><div class="lanes" id="lanes"></div><button class="btn ghost col-add" id="add-col">+ time step</button></div>
 <div class="status" id="lab-status"></div>
 </div>
 <div class="row">
@@ -199,7 +201,7 @@ function renderGrid(){
     const head=document.createElement("div"); head.className="qhead";
     const lab=document.createElement("div"); lab.className="qlabel"; lab.textContent="q"+q;
     const mt=document.createElement("button"); mt.className="mtoggle"+(measured.has(q)?" on":"");
-    mt.textContent="measure"; mt.title="Toggle measurement of q"+q;
+    mt.textContent=measured.has(q)?"measured":"measure"; mt.title="Toggle measurement of q"+q;
     mt.addEventListener("click", ()=> toggleMeasure(q));
     head.appendChild(lab); head.appendChild(mt);
     const cells=document.createElement("div"); cells.className="cells"; cells.dataset.q=q;
@@ -217,7 +219,8 @@ function renderGrid(){
     lane.appendChild(head); lane.appendChild(cells);
     lanes.appendChild(lane);
   }
-  drawLinks(); drawPending();
+  drawPending();
+  requestAnimationFrame(drawLinks);
 }
 
 function drawOps(cell,op,q,c){
@@ -238,21 +241,30 @@ function drawOps(cell,op,q,c){
   cell.appendChild(el);
 }
 
+function offsetIn(el, root){
+  let x=0,y=0,n=el;
+  while(n && n!==root){ x+=n.offsetLeft; y+=n.offsetTop; n=n.offsetParent; }
+  return {x,y};
+}
+
 function drawLinks(){
+  const lanes=$("lanes"); if(!lanes) return;
+  lanes.querySelectorAll(".vlink").forEach(l=>l.remove());
   const twoOps = state.ops.filter(o=>o.wires.length===2);
   twoOps.forEach(o=>{
-    const a=o.wires[0], b=o.wires[1]; const lo=Math.min(a,b), hi=Math.max(a,b);
-    const cellLo=document.querySelector('.cell[data-q="'+lo+'"][data-c="'+o.c+'"]');
-    const cellHi=document.querySelector('.cell[data-q="'+hi+'"][data-c="'+o.c+'"]');
+    const lo=Math.min(o.wires[0],o.wires[1]), hi=Math.max(o.wires[0],o.wires[1]);
+    const cellLo=lanes.querySelector('.cell[data-q="'+lo+'"][data-c="'+o.c+'"]');
+    const cellHi=lanes.querySelector('.cell[data-q="'+hi+'"][data-c="'+o.c+'"]');
     if(!cellLo||!cellHi) return;
-    const wrap=cellLo.parentElement.parentElement.parentElement;
+    const pLo=offsetIn(cellLo,lanes), pHi=offsetIn(cellHi,lanes);
+    const cx=pLo.x + cellLo.offsetWidth/2;
+    const yTop=pLo.y + cellLo.offsetHeight/2;
+    const yBot=pHi.y + cellHi.offsetHeight/2;
     const link=document.createElement("div"); link.className="vlink";
-    const r1=cellLo.getBoundingClientRect(), r2=cellHi.getBoundingClientRect();
-    const wr=wrap.getBoundingClientRect();
-    link.style.top=(r1.top - wr.top + r1.height/2)+"px";
-    link.style.height=(r2.top - r1.top)+"px";
-    link.style.left=(r1.left - wr.left + r1.width/2)+"px";
-    wrap.appendChild(link);
+    link.style.left=(cx-1.5)+"px";
+    link.style.top=yTop+"px";
+    link.style.height=Math.max(2,(yBot-yTop))+"px";
+    lanes.appendChild(link);
   });
 }
 
@@ -439,6 +451,7 @@ function wire(){
   $("vqe-run").addEventListener("click", runVQE);
   $("vqe-steps").addEventListener("input", ()=>{ $("steps-v").textContent=$("vqe-steps").value; });
   $("vqe-lr").addEventListener("input", ()=>{ $("lr-v").textContent=(parseInt($("vqe-lr").value)/100).toFixed(2); });
+  window.addEventListener("resize", drawLinks);
   maybeRun();
 }
 document.addEventListener("DOMContentLoaded", wire);
