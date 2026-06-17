@@ -37,6 +37,199 @@ h3{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;le
 .palette{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
 .gate-chip{user-select:none;cursor:grab;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-weight:700;font-size:13px;color:var(--text);}
 .gate-chip.g2{border-color:var(--accent-2);color:var(--accent-2);}
+.gate-chip.gm{border-color:var(--good);color:var(--good);}
+.gate-chip.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset;}
+.gate-chip:active{cursor:grabbing;}
+.grid-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface-2);}
+.lane{display:flex;align-items:center;margin:6px 0;}
+.qlabel{width:42px;font-weight:700;color:var(--accent-2);}
+.cells{display:flex;position:relative;}
+.cell{width:56px;height:48px;margin:0 4px;border:1px dashed var(--line);border-radius:8px;display:flex;align-items:center;justify-content:center;position:relative;cursor:pointer;}
+.cell.drop-ok{border-color:var(--accent);background:rgba(124,92,255,.12);}
+.cell.target-ok{border-color:var(--accent-2);background:rgba(34,211,238,.10);}
+.cell::before{content:"";position:absolute;left:-4px;right:-4px;top:50%;height:2px;background:var(--line);z-index:0;}
+.vlink{position:absolute;width:2px;background:var(--accent-2);left:50%;transform:translateX(-50%);z-index:1;pointer-events:none;}
+.placed{position:relative;z-index:2;background:var(--accent);color:#fff;border-radius:8px;min-width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;padding:0 6px;cursor:pointer;}
+.placed.two{background:transparent;color:var(--accent-2);font-size:20px;}
+.placed.two.ctrl-dot{color:var(--accent-2);}
+.placed.ghost{opacity:.4;}
+.placed.measure{background:var(--good);color:#06281b;font-size:16px;}
+.angle{font-size:9px;margin-left:4px;opacity:.85;}
+.col-add{margin-top:10px;}
+.bars{display:flex;flex-direction:column;gap:6px;}
+.bar-row{display:flex;align-items:center;gap:10px;font-variant-numeric:tabular-nums;}
+.bar-lab{width:64px;font-size:12px;color:var(--muted);}
+.bar-track{flex:1;height:14px;background:var(--surface-2);border-radius:7px;overflow:hidden;}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent-2));}
+.bar-val{width:54px;text-align:right;font-size:12px;color:var(--text);}
+.bloch-grid{display:flex;gap:14px;flex-wrap:wrap;}
+.bloch-cell{text-align:center;}
+.bloch-cap{font-size:12px;color:var(--muted);margin-top:4px;}
+.expvals{display:flex;flex-direction:column;gap:8px;}
+.ev{display:flex;justify-content:space-between;background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:13px;}
+.muted-note{font-size:12px;color:var(--muted);margin:0 0 10px;}
+.status{margin-top:12px;font-size:12.5px;color:var(--muted);min-height:16px;}
+.status.err{color:var(--bad);}
+.slider{width:160px;}
+canvas{background:var(--surface-2);border:1px solid var(--line);border-radius:10px;}
+  </style>
+</head>
+<body>
+<header>
+  <div class="logo">PennyLane<b>.Lab</b></div>
+  <span class="pill" id="pl-ver">PennyLane …</span>
+  <span class="pill" id="dev-name">default.qubit</span>
+  <span class="pill">status: <span id="conn-text">…</span></span>
+  <div class="tabs">
+    <button class="tab active" id="tab-lab">Circuit Lab</button>
+    <button class="tab" id="tab-vqe">VQE Demo</button>
+  </div>
+</header>
+<main>
+  <section class="panel active" id="panel-lab">
+    <div class="card">
+      <h2>Circuit builder</h2>
+      <p class="hint">Drag a gate onto any qubit at any time step, or click a gate then click a cell. For CNOT / CZ / SWAP, place it on the control qubit, then click the target qubit in the same column — a line connects control and target. Drop the Measure gate on the qubits you want to read out; if you place none, all qubits are shown. Click a placed rotation (RX/RY/RZ) to set its angle; right-click a gate to remove it.</p>
+      <div class="toolbar">
+        <span class="checkbox">Qubits <span class="stepper"><button id="q-minus">−</button><span id="q-val">2</span><button id="q-plus">+</button></span></span>
+        <label class="checkbox"><input type="checkbox" id="autorun" checked> auto-run</label>
+        <label class="checkbox"><input type="checkbox" id="use-shots"> sampling <input type="range" id="shots" class="slider" min="128" max="8192" step="128" value="1024"><span id="shots-val">1024</span></label>
+        <button class="btn ghost" id="clear">Clear</button>
+        <button class="btn" id="run">Run ▶</button>
+      </div>
+      <h3>1-qubit gates</h3>
+      <div class="palette" id="pal1"></div>
+      <h3>2-qubit (controlled) gates</h3>
+      <div class="palette" id="pal2"></div>
+      <h3>measurement</h3>
+      <div class="palette" id="palm"></div>
+      <div class="grid-wrap"><div id="lanes"></div><button class="btn ghost col-add" id="add-col">+ time step</button></div>
+      <div class="status" id="lab-status"></div>
+    </div>
+    <div class="row">
+      <div class="col card"><h2>Measurement probabilities</h2><p class="muted-note" id="meas-note"></p><div class="bars" id="bars"></div></div>
+      <div class="col card"><h2>Expectation ⟨Z⟩</h2><div class="expvals" id="expvals"></div></div>
+    </div>
+    <div class="card"><h2>Bloch vectors</h2><div class="bloch-grid" id="bloch-grid"></div></div>
+  </section>
+  <section class="panel" id="panel-vqe">
+    <div class="card">
+      <h2>Variational Quantum Eigensolver</h2>
+      <p class="hint">Optimize a variational circuit to find the ground-state energy. Adjust the optimizer steps and learning rate, then run.</p>
+      <div class="toolbar">
+        <label class="checkbox">steps <input type="range" id="vqe-steps" class="slider" min="10" max="200" step="10" value="60"><span id="steps-v">60</span></label>
+        <label class="checkbox">learning rate <input type="range" id="vqe-lr" class="slider" min="0.01" max="0.5" step="0.01" value="0.1"><span id="lr-v">0.1</span></label>
+        <button class="btn" id="vqe-run">Optimize ▶</button>
+      </div>
+      <canvas id="vqe-canvas" width="640" height="260"></canvas>
+      <div class="status">final energy: <b id="vqe-final">—</b></div>
+      <div class="status" id="vqe-status"></div>
+    </div>
+  </section>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const $$=s=>Array.from(document.querySelectorAll(s));
+const G1=["H","X","Y","Z","S","T","RX","RY","RZ"];
+const G2=["CNOT","CZ","SWAP"];
+const PARAM=new Set(["RX","RY","RZ"]);
+const TWO=new Set(["CNOT","CZ","SWAP"]);
+const state={n:2,cols:4,ops:[],measures:new Set(),pending:null,selected:null,seq:1};
+function gid(){return state.seq++;}
+function occupied(q,c){return state.ops.find(o=>o.col===c&&(o.wires[0]===q||(o.wires.length>1&&o.wires[1]===q)));}
+function serialize(){return state.ops.slice().sort((a,b)=>a.col-b.col||a.id-b.id).map(o=>({gate:o.gate,wires:o.wires.slice(),param:o.param}));}
+function removeOp(id){state.ops=state.ops.filter(o=>o.id!==id);state.pending=null;renderGrid();maybeRun();}
+function fmtAngle(r){return (r*180/Math.PI).toFixed(0)+"\u00B0";}
+function flash(msg,bad){const s=$("#lab-status");if(!s)return;s.textContent=msg;s.className="status"+(bad?" err":"");}
+function measuredWires(){return state.measures.size?Array.from(state.measures).sort((a,b)=>a-b):null;}
+
+function connect(){fetch("/api/info").then(r=>r.json()).then(d=>{$("#pl-ver").textContent="PennyLane "+(d.pennylane_version||"?");$("#dev-name").textContent=(d.devices&&d.devices[0])||"default.qubit";$("#conn-text").textContent="connected";$("#conn-text").style.color="var(--good)";}).catch(()=>{$("#conn-text").textContent="offline";$("#conn-text").style.color="var(--bad)";});}
+
+function makeChip(g,cls){const el=document.createElement("div");el.className="gate-chip"+(cls?" "+cls:"");el.textContent=g;el.draggable=true;el.dataset.gate=g;el.addEventListener("dragstart",e=>{e.dataTransfer.setData("text/gate",g);e.dataTransfer.effectAllowed="copy";});el.addEventListener("click",()=>selectGate(g,el));return el;}
+function buildPalette(){$("#pal1").innerHTML="";$("#pal2").innerHTML="";$("#palm").innerHTML="";G1.forEach(g=>$("#pal1").appendChild(makeChip(g,"")));G2.forEach(g=>$("#pal2").appendChild(makeChip(g,"g2")));$("#palm").appendChild(makeChip("MEASURE","gm"));}
+function selectGate(g,el){state.selected=(state.selected===g)?null:g;state.pending=null;$$(".gate-chip").forEach(c=>c.classList.toggle("sel",c.dataset.gate===state.selected));flash(state.selected?("Selected "+state.selected+" \u2014 click a qubit to place it"):"");renderGrid();}
+
+function renderGrid(){const lanes=$("#lanes");lanes.innerHTML="";for(let q=0;q<state.n;q++){const lane=document.createElement("div");lane.className="lane";const lab=document.createElement("div");lab.className="qlabel";lab.textContent="q"+q;lane.appendChild(lab);const cells=document.createElement("div");cells.className="cells";for(let c=0;c<state.cols;c++){const cell=document.createElement("div");cell.className="cell";cell.dataset.q=q;cell.dataset.c=c;const op=occupied(q,c);if(op)drawOps(cell,op,q,c);cell.addEventListener("dragover",e=>{e.preventDefault();e.dataTransfer.dropEffect="copy";cell.classList.add("drop-ok");});cell.addEventListener("dragleave",()=>cell.classList.remove("drop-ok"));cell.addEventListener("drop",e=>{e.preventDefault();cell.classList.remove("drop-ok");const g=e.dataTransfer.getData("text/gate");if(g)onDrop(g,q,c);});cell.addEventListener("click",()=>onCellClick(q,c));cells.appendChild(cell);}lane.appendChild(cells);lanes.appendChild(lane);}drawLinks();drawMeasures();drawPending();}
+
+function drawOps(cell,op,q,c){if(!TWO.has(op.gate)){const chip=document.createElement("div");chip.className="placed";chip.textContent=op.gate;if(PARAM.has(op.gate)){const a=document.createElement("span");a.className="angle";a.textContent=fmtAngle(op.param||0);chip.appendChild(a);chip.title="click to edit angle";}chip.addEventListener("click",e=>{e.stopPropagation();if(PARAM.has(op.gate)){editAngle(op);}else{removeOp(op.id);}});chip.addEventListener("contextmenu",e=>{e.preventDefault();removeOp(op.id);});cell.appendChild(chip);return;}
+const isCtrl=op.wires[0]===q;const chip=document.createElement("div");chip.className="placed two "+(isCtrl?"ctrl-dot":"x");if(isCtrl){chip.textContent="\u25CF";}else{chip.textContent=op.gate==="SWAP"?"\u00D7":(op.gate==="CZ"?"Z":"\u2295");}chip.title=op.gate+" (right-click to remove)";chip.addEventListener("click",e=>{e.stopPropagation();removeOp(op.id);});chip.addEventListener("contextmenu",e=>{e.preventDefault();removeOp(op.id);});cell.appendChild(chip);}
+
+function drawLinks(){const twoOps=state.ops.filter(o=>TWO.has(o.gate)&&o.wires.length>1);twoOps.forEach(o=>{const c=o.col;const a=o.wires[0],b=o.wires[1];const top=Math.min(a,b),bot=Math.max(a,b);const cellTop=$(".cell[data-q=\""+top+"\"][data-c=\""+c+"\"]");const cellBot=$(".cell[data-q=\""+bot+"\"][data-c=\""+c+"\"]");if(!cellTop||!cellBot)return;const link=document.createElement("div");link.className="vlink";const h=(bot-top)*(48+12);link.style.top="50%";link.style.height=h+"px";cellTop.appendChild(link);});}
+
+function drawMeasures(){state.measures.forEach(q=>{if(q>=state.n)return;const lane=$$(".lane")[q];if(!lane)return;const cells=lane.querySelector(".cells");const last=cells.children[state.cols-1];if(!last||last.querySelector(".placed"))return;const m=document.createElement("div");m.className="placed measure";m.textContent="\uD83D\uDCCF";m.title="Measuring q"+q+" (click to remove)";m.addEventListener("click",e=>{e.stopPropagation();state.measures.delete(q);renderGrid();maybeRun();});last.appendChild(m);});}
+
+function onDrop(gate,q,c){state.selected=null;$$(".gate-chip").forEach(x=>x.classList.remove("sel"));if(gate==="MEASURE"){if(state.measures.has(q)){state.measures.delete(q);flash("Removed measurement on q"+q);}else{state.measures.add(q);flash("Measuring q"+q);}state.pending=null;renderGrid();maybeRun();return;}if(TWO.has(gate)){if(occupied(q,c)){flash("That cell is taken",true);return;}state.pending={gate:gate,control:q,col:c};flash("Now click the TARGET qubit in column "+c+" for "+gate);renderGrid();return;}if(occupied(q,c)){flash("That cell is taken",true);return;}state.ops.push({id:gid(),gate:gate,wires:[q],param:PARAM.has(gate)?Math.PI/2:0,col:c});state.pending=null;flash("Placed "+gate+" on q"+q);renderGrid();maybeRun();}
+
+function onCellClick(q,c){if(state.pending){if(c!==state.pending.col){flash("Pick the target in the SAME column ("+state.pending.col+")",true);return;}if(q===state.pending.control){state.pending=null;flash("Cancelled");renderGrid();return;}if(occupied(q,c)){flash("Target cell is taken",true);return;}const p=state.pending;state.ops.push({id:gid(),gate:p.gate,wires:[p.control,q],param:0,col:c});state.pending=null;flash("Placed "+p.gate+": control q"+p.control+" \u2192 target q"+q);renderGrid();maybeRun();return;}if(state.selected){onDrop(state.selected,q,c);}}
+
+function drawPending(){if(!state.pending)return;const c=state.pending.col;$$(".cell").forEach(cell=>{const q=+cell.dataset.q;const cc=+cell.dataset.c;if(cc===c&&q!==state.pending.control&&!occupied(q,cc)){cell.classList.add("target-ok");}});const ctrlCell=$(".cell[data-q=\""+state.pending.control+"\"][data-c=\""+c+"\"]");if(ctrlCell&&!ctrlCell.querySelector(".placed")){const dot=document.createElement("div");dot.className="placed two ctrl-dot ghost";dot.textContent="\u25CF";ctrlCell.appendChild(dot);}}
+function editAngle(op){const cur=Math.round((op.param||0)*180/Math.PI);const v=prompt("Rotation angle in degrees for "+op.gate+" on q"+op.wires[0]+":",cur);if(v===null)return;const deg=parseFloat(v);if(isNaN(deg)){flash("Invalid angle",true);return;}op.param=deg*Math.PI/180;renderGrid();maybeRun();}
+function setQubits(n){n=Math.max(1,Math.min(6,n));state.n=n;state.ops=state.ops.filter(o=>o.wires.every(w=>w<n));state.measures=new Set(Array.from(state.measures).filter(q=>q<n));state.pending=null;$("#q-val").textContent=n;renderGrid();maybeRun();}
+function addCol(){state.cols++;renderGrid();}
+
+let _t=null;
+function maybeRun(){if(!$("#autorun")||!$("#autorun").checked)return;clearTimeout(_t);_t=setTimeout(runCircuit,150);}
+function basisLabel(i,n){return "|"+i.toString(2).padStart(n,"0")+"\u27E9";}
+function runCircuit(){const body={n_qubits:state.n,operations:serialize(),device:"default.qubit"};if($("#use-shots")&&$("#use-shots").checked){body.shots=parseInt($("#shots").value,10)||1024;}flash("Simulating\u2026");fetch("/api/simulate",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{if(d.error){flash("Error: "+d.error,true);return;}renderResult(d);const mw=measuredWires();flash("Done \u2014 "+state.ops.length+" gate(s)"+(mw?(", measuring q"+mw.join(", q")):""));}).catch(e=>flash("Request failed: "+e.message,true));}
+
+function marginalProbs(fullProbs,n,wires){const out={};for(let i=0;i<fullProbs.length;i++){let key=0;for(let k=0;k<wires.length;k++){const bit=(i>>(n-1-wires[k]))&1;key=(key<<1)|bit;}out[key]=(out[key]||0)+fullProbs[i];}return out;}
+
+function renderResult(d){const n=d.n_qubits;const mw=measuredWires();const sampled=d.sampled_probs||null;const fullP=(d.amplitudes||[]).map((a,i)=>sampled?sampled[i]:a.prob);const bars=$("#bars");bars.innerHTML="";$("#meas-note").textContent=mw?("Showing measured qubits only: q"+mw.join(", q")):"No measurement gate placed \u2014 showing all qubits.";
+if(mw){const m=marginalProbs(fullP,n,mw);const keys=Object.keys(m).map(Number).sort((a,b)=>a-b);for(let i=0;i<(1<<mw.length);i++){const p=m[i]||0;const row=document.createElement("div");row.className="bar-row";row.innerHTML='<div class="bar-lab">'+basisLabel(i,mw.length)+'</div><div class="bar-track"><div class="bar-fill" style="width:'+(Math.max(0,Math.min(1,p))*100).toFixed(1)+'%"></div></div><div class="bar-val">'+(p*100).toFixed(1)+'%</div>';bars.appendChild(row);}}else{fullP.forEach((p,i)=>{const row=document.createElement("div");row.className="bar-row";row.innerHTML='<div class="bar-lab">'+basisLabel(i,n)+'</div><div class="bar-track"><div class="bar-fill" style="width:'+(Math.max(0,Math.min(1,p))*100).toFixed(1)+'%"></div></div><div class="bar-val">'+(p*100).toFixed(1)+'%</div>';bars.appendChild(row);});}
+const show=mw||Array.from({length:n},(_,i)=>i);const bg=$("#bloch-grid");bg.innerHTML="";show.forEach(i=>{const b=(d.bloch||[])[i]||{x:0,y:0,z:0};const cell=document.createElement("div");cell.className="bloch-cell";const cv=document.createElement("canvas");cv.width=120;cv.height=120;cell.appendChild(cv);const cap=document.createElement("div");cap.className="bloch-cap";cap.textContent="q"+i;cell.appendChild(cap);bg.appendChild(cell);drawBloch(cv,b);});
+const ev=$("#expvals");ev.innerHTML="";show.forEach(i=>{const e=(d.expvals_z||[])[i];if(e===undefined)return;const row=document.createElement("div");row.className="ev";row.innerHTML="<span>\u27E8Z<sub>"+i+"</sub>\u27E9</span><b>"+(+e).toFixed(3)+"</b>";ev.appendChild(row);});}
+
+function drawBloch(cv,b){const ctx=cv.getContext("2d");const W=cv.width,H=cv.height,cx=W/2,cy=H/2,R=W*0.38;ctx.clearRect(0,0,W,H);ctx.strokeStyle="#242a40";ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.ellipse(cx,cy,R,R*0.34,0,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(cx,cy-R);ctx.lineTo(cx,cy+R);ctx.moveTo(cx-R,cy);ctx.lineTo(cx+R,cy);ctx.strokeStyle="#1b2030";ctx.stroke();const x=b.x||0,y=b.y||0,z=b.z||0;const px=cx+x*R*0.9;const py=cy-z*R*0.9 - y*R*0.30;ctx.strokeStyle="#7c5cff";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(px,py);ctx.stroke();ctx.fillStyle="#22d3ee";ctx.beginPath();ctx.arc(px,py,4,0,Math.PI*2);ctx.fill();}
+
+function runVQE(){const steps=parseInt($("#vqe-steps").value,10)||50;const lr=parseFloat($("#vqe-lr").value)||0.1;$("#vqe-status").textContent="Optimizing\u2026";fetch("/api/vqe",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({steps:steps,learning_rate:lr})}).then(r=>r.json()).then(d=>{if(d.error){$("#vqe-status").textContent="Error: "+d.error;return;}const hist=d.energy_history||d.history||d.energies||[];drawEnergy(hist);if(d.final_energy!==undefined)$("#vqe-final").textContent=(+d.final_energy).toFixed(6);$("#vqe-status").textContent="Converged in "+(hist.length||steps)+" steps";}).catch(e=>$("#vqe-status").textContent="Failed: "+e.message);}
+function drawEnergy(hist){const cv=$("#vqe-canvas");if(!cv||!hist.length)return;const ctx=cv.getContext("2d");const W=cv.width,H=cv.height,pad=28;ctx.clearRect(0,0,W,H);const mn=Math.min(...hist),mx=Math.max(...hist),rng=(mx-mn)||1;ctx.strokeStyle="#242a40";ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,H-pad);ctx.lineTo(W-pad,H-pad);ctx.stroke();ctx.strokeStyle="#7c5cff";ctx.lineWidth=2;ctx.beginPath();hist.forEach((e,i)=>{const x=pad+(i/(hist.length-1||1))*(W-2*pad);const y=H-pad-((e-mn)/rng)*(H-2*pad);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});ctx.stroke();}
+
+function showTab(which){$("#tab-lab").classList.toggle("active",which==="lab");$("#tab-vqe").classList.toggle("active",which==="vqe");$("#panel-lab").classList.toggle("active",which==="lab");$("#panel-vqe").classList.toggle("active",which==="vqe");}
+function clearCircuit(){state.ops=[];state.measures=new Set();state.pending=null;state.selected=null;$$(".gate-chip").forEach(c=>c.classList.remove("sel"));renderGrid();maybeRun();flash("Cleared");}
+function wire(){$("#tab-lab").addEventListener("click",()=>showTab("lab"));$("#tab-vqe").addEventListener("click",()=>showTab("vqe"));$("#q-plus").addEventListener("click",()=>setQubits(state.n+1));$("#q-minus").addEventListener("click",()=>setQubits(state.n-1));$("#add-col").addEventListener("click",addCol);$("#clear").addEventListener("click",clearCircuit);$("#run").addEventListener("click",runCircuit);$("#use-shots").addEventListener("change",maybeRun);$("#shots").addEventListener("input",e=>{$("#shots-val").textContent=e.target.value;});$("#vqe-run").addEventListener("click",runVQE);$("#vqe-steps").addEventListener("input",e=>$("#steps-v").textContent=e.target.value);$("#vqe-lr").addEventListener("input",e=>$("#lr-v").textContent=e.target.value);}
+connect();buildPalette();renderGrid();wire();runCircuit();
+</script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PennyLane Lab</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <style>
+:root{--bg:#070912;--surface:#10131f;--surface-2:#161a2a;--line:#242a40;--text:#e8ebf7;--muted:#8b93b0;--accent:#7c5cff;--accent-2:#22d3ee;--good:#34d399;--bad:#fb7185;--body:"Inter",system-ui,sans-serif;}
+*{box-sizing:border-box;}
+body{margin:0;background:radial-gradient(1200px 800px at 80% -10%,#131a33 0%,transparent 55%),radial-gradient(900px 600px at -5% 110%,#161226 0%,transparent 50%),var(--bg);color:var(--text);font-family:var(--body);}
+header{display:flex;align-items:center;gap:16px;padding:16px 24px;border-bottom:1px solid var(--line);}
+.logo{font-weight:700;font-size:18px;letter-spacing:.3px;}
+.logo b{color:var(--accent);}
+.pill{font-size:12px;color:var(--muted);background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:4px 10px;}
+.tabs{margin-left:auto;display:flex;gap:8px;}
+.tab{background:var(--surface);border:1px solid var(--line);color:var(--muted);padding:8px 14px;border-radius:10px;cursor:pointer;font-weight:600;}
+.tab.active{color:var(--text);border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset;}
+main{padding:24px;max-width:1200px;margin:0 auto;}
+.panel{display:none;}
+.panel.active{display:block;}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px;}
+.row{display:flex;gap:18px;flex-wrap:wrap;}
+.col{flex:1;min-width:320px;}
+h2{font-size:15px;margin:0 0 12px;color:var(--text);}
+h3{font-size:13px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;}
+.hint{font-size:12.5px;color:var(--muted);line-height:1.5;margin:0 0 14px;}
+.toolbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;}
+.stepper{display:inline-flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:4px;}
+.stepper button{width:28px;height:28px;border:none;border-radius:8px;background:var(--surface);color:var(--text);cursor:pointer;font-size:16px;}
+.stepper span{min-width:20px;text-align:center;font-weight:700;}
+.btn{background:var(--accent);color:#fff;border:none;border-radius:10px;padding:8px 16px;font-weight:600;cursor:pointer;}
+.btn.ghost{background:var(--surface-2);color:var(--text);border:1px solid var(--line);}
+.checkbox{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);}
+.palette{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
+.gate-chip{user-select:none;cursor:grab;background:var(--surface-2);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-weight:700;font-size:13px;color:var(--text);}
+.gate-chip.g2{border-color:var(--accent-2);color:var(--accent-2);}
 .gate-chip.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent) inset;}
 .gate-chip:active{cursor:grabbing;}
 .grid-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;padding:14px;background:var(--surface-2);}
