@@ -138,7 +138,7 @@ canvas{background:var(--surface-2);border:1px solid var(--line);border-radius:10
 const API = "";
 const G1 = {H:{},X:{},Y:{},Z:{},S:{},T:{},RX:{p:1},RY:{p:1},RZ:{p:1}};
 const G2 = {CNOT:{},CZ:{},SWAP:{}};
-const state = {n:2, cols:4, ops:[], measures:new Set(), pending:null, selected:null, seq:1};
+const state = {n:2, cols:8, ops:[], measures:new Set(), pending:null, selected:null, seq:1};
 const $ = id => document.getElementById(id);
 
 function gid(){ return "op"+(state.seq++); }
