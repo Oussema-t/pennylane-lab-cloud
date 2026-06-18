@@ -1,4 +1,9 @@
-pennylane
+# Pinned for a reproducible install.
+# pennylane 0.38 is the last line that supports Python 3.9; it imports a class
+# (NumpyMimic) that newer autoray (>=0.7) removed, so autoray must stay on 0.6.x.
+# numpy is held below 2.0 for compatibility with this PennyLane line.
+pennylane==0.38.0
+autoray==0.6.12
+numpy==1.26.4
 fastapi
 uvicorn
-numpy
