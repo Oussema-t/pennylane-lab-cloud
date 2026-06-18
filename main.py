@@ -116,6 +116,70 @@ def _bloch_vectors_from_state(state: np.ndarray, n: int):
     return vectors
 
 
+def _memory_analysis(state: np.ndarray, n: int):
+    """
+    Compare how much memory THIS exact quantum state needs, three ways:
+
+      * dense  — the full 2**n complex128 amplitudes (what default.qubit stores)
+      * sparse — only the non-zero amplitudes (amplitude + integer basis index)
+      * MPS    — a Matrix Product State, sized by ENTANGLEMENT (bond dimension),
+                 not by amplitude sparsity. We compute the EXACT minimal bond
+                 dimensions with a left-to-right SVD sweep (Schmidt ranks).
+
+    This is what powers the "Memory & representation" panel in the UI and shows
+    why a product state (dense in amplitudes, zero entanglement) compresses to
+    almost nothing under MPS, while a highly entangling state does not.
+    """
+    complex_bytes = 16          # complex128 = 8 B real + 8 B imaginary
+    sparse_entry_bytes = 24     # one amplitude (16 B) + its int64 index (8 B)
+    zero_tol = 1e-12
+    svd_tol = 1e-10
+
+    vec = np.asarray(state, dtype=complex).reshape(-1)
+    total = int(vec.size)       # 2**n
+    dense_bytes = complex_bytes * total
+
+    nonzero = int(np.count_nonzero(np.abs(vec) > zero_tol))
+    sparse_bytes = nonzero * sparse_entry_bytes
+
+    bonds: List[int] = []
+    elements = 0
+    if n <= 1:
+        elements = total
+    else:
+        chi_left = 1
+        residual = vec.reshape(1, -1)
+        for _ in range(n - 1):
+            mat = residual.reshape(chi_left * 2, -1)
+            _, s, vh = np.linalg.svd(mat, full_matrices=False)
+            cutoff = svd_tol * (s[0] if s.size else 1.0)
+            chi = int(np.count_nonzero(s > cutoff)) or 1
+            bonds.append(chi)
+            elements += chi_left * 2 * chi          # site tensor (chi_left, 2, chi)
+            residual = np.diag(s[:chi]) @ vh[:chi, :]
+            chi_left = chi
+        elements += chi_left * 2                    # final site tensor (chi_left, 2, 1)
+
+    mps_bytes = elements * complex_bytes
+    max_bond = max(bonds) if bonds else 1
+
+    options = {"dense": dense_bytes, "sparse": sparse_bytes, "mps": mps_bytes}
+    best = min(options, key=options.get)
+
+    return {
+        "complex_bytes": complex_bytes,
+        "total_amplitudes": total,
+        "nonzero_amplitudes": nonzero,
+        "dense_bytes": dense_bytes,
+        "sparse_bytes": sparse_bytes,
+        "sparse_entry_bytes": sparse_entry_bytes,
+        "mps_bytes": mps_bytes,
+        "mps_max_bond": max_bond,
+        "mps_bonds": bonds,
+        "best": best,
+    }
+
+
 def run_circuit(spec: CircuitSpec):
     n = spec.n_qubits
 
@@ -168,6 +232,7 @@ def run_circuit(spec: CircuitSpec):
         "amplitudes": amplitudes,
         "bloch": bloch,
         "expvals_z": [b["z"] for b in bloch],
+        "memory": _memory_analysis(state, n),
     }
 
     # Optional finite-shot sampling, to show measurement statistics.

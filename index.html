@@ -116,6 +116,7 @@ canvas{background:var(--surface-2);border:1px solid var(--line);border-radius:10
 <div class="col card"><h2>Expectation ⟨Z⟩</h2><div class="expvals" id="expvals"></div></div>
 </div>
 <div class="card"><h2>Bloch vectors</h2><p class="muted-note" id="bloch-note"></p><div class="bloch-grid" id="bloch-grid"></div></div>
+<div class="card" id="mem-card"><h2>Memory &amp; representation</h2><p class="muted-note">How much memory this exact state needs, stored three ways. <b>Sparse</b> keeps only non-zero amplitudes; <b>MPS</b> (tensor network) is sized by entanglement (bond dimension), not by sparsity. Computed from the real statevector on each Run.</p><div id="mem-compare"></div></div>
 </section>
 <section class="panel" id="panel-vqe">
 <div class="card">
@@ -455,6 +456,130 @@ function wire(){
   maybeRun();
 }
 document.addEventListener("DOMContentLoaded", wire);
+</script>
+
+<script>
+/* === Live memory readout (statevector footprint) =========================
+   Shows, in real time, how much memory the simulated quantum state occupies:
+   a per-layer row beneath the circuit grid, and a live "Memory" badge under
+   the run status. Updates on every gate add/remove, qubit change, layer add,
+   clear, and after each simulation run. State-vector simulators store 2^n
+   complex amplitudes (complex128 = 16 bytes each), so memory = 16 * 2^n. */
+(function(){
+  const BYTES_PER_AMP = 16; // complex128: 8 bytes real + 8 bytes imaginary
+
+  function fmtBytes(b){
+    if(b < 1024) return b + ' B';
+    const u = ['KB','MB','GB','TB','PB']; let i = -1;
+    do { b /= 1024; i++; } while(b >= 1024 && i < u.length - 1);
+    return b.toFixed(b < 10 ? 2 : 1) + ' ' + u[i];
+  }
+  const stateBytes = n => BYTES_PER_AMP * Math.pow(2, n);
+
+  function colCounts(){
+    const c = new Array(state.cols).fill(0);
+    (state.ops || []).forEach(o => {
+      if(typeof o.c === 'number' && o.c < state.cols) c[o.c]++;
+    });
+    return c;
+  }
+
+  function renderMemBar(){
+    const lanes = document.getElementById('lanes'); if(!lanes) return;
+    const n = state.n, sv = stateBytes(n);
+    let bar = document.getElementById('memLayerBar');
+    if(!bar){
+      bar = document.createElement('div'); bar.id = 'memLayerBar';
+      bar.style.cssText = 'display:flex;flex-wrap:nowrap;margin-top:10px;padding-left:112px;';
+      lanes.after(bar);
+    }
+    const counts = colCounts(); bar.innerHTML = '';
+    for(let col = 0; col < state.cols; col++){
+      const cell = document.createElement('div');
+      cell.style.cssText = 'width:56px;margin:0 4px;text-align:center;font-size:10px;line-height:1.3;color:#8b93b0;';
+      cell.innerHTML = '<div style="color:#22d3ee;font-weight:700">L' + (col+1) + '</div>'
+        + '<div>' + fmtBytes(sv) + '</div>'
+        + '<div style="color:#7c5cff">' + counts[col] + 'g</div>';
+      cell.title = 'Layer ' + (col+1) + ': statevector held in memory = ' + fmtBytes(sv)
+        + ' (' + counts[col] + ' gate(s) in this layer)';
+      bar.appendChild(cell);
+    }
+  }
+
+  function renderMemBadge(){
+    const st = document.getElementById('lab-status'); if(!st) return;
+    const n = state.n, sv = stateBytes(n), working = sv * 2, ng = (state.ops || []).length;
+    let badge = document.getElementById('memBadge');
+    if(!badge){
+      badge = document.createElement('div'); badge.id = 'memBadge';
+      badge.style.cssText = 'margin-top:8px;font-size:12.5px;color:#8b93b0;line-height:1.6;';
+      st.after(badge);
+    }
+    const measured = window.__lastMeasuredBytes;
+    const measuredTxt = measured
+      ? ' &nbsp;&middot;&nbsp; <b style="color:#34d399">measured ' + fmtBytes(measured) + '</b>'
+      : '';
+    badge.innerHTML =
+      '<b style="color:#22d3ee">Memory</b> &nbsp; statevector <b style="color:#e8ebf7">' + fmtBytes(sv) + '</b> '
+      + '(' + n + ' qubits &rarr; 2<sup>' + n + '</sup> = ' + Math.pow(2,n) + ' amplitudes &times; 16 B)'
+      + ' &nbsp;&middot;&nbsp; sim working set &asymp; <b style="color:#e8ebf7">' + fmtBytes(working) + '</b>'
+      + measuredTxt
+      + ' &nbsp;&middot;&nbsp; ' + ng + ' gate(s)';
+  }
+
+  function renderMemCompare(mem){
+    const host = document.getElementById('mem-compare'); if(!host || !mem) return;
+    const rows = [
+      ['Dense statevector', mem.dense_bytes, mem.total_amplitudes + ' amplitudes × 16 B (all stored, zeros included)', 'dense'],
+      ['Sparse', mem.sparse_bytes, mem.nonzero_amplitudes + ' / ' + mem.total_amplitudes + ' non-zero × 24 B (amp + index)', 'sparse'],
+      ['MPS (tensor network)', mem.mps_bytes, 'max bond dimension ' + mem.mps_max_bond + (mem.mps_bonds && mem.mps_bonds.length ? ' (bonds ' + mem.mps_bonds.join('·') + ')' : ''), 'mps']
+    ];
+    let html = '<div style="display:flex;flex-direction:column;gap:8px">';
+    rows.forEach(function(r){
+      const isBest = (mem.best === r[3]);
+      html += '<div style="display:flex;align-items:center;gap:12px;background:var(--surface-2);border:1px solid ' + (isBest ? 'var(--good)' : 'var(--line)') + ';border-radius:10px;padding:10px 12px">'
+        + '<div style="width:170px;font-weight:700;color:' + (isBest ? 'var(--good)' : 'var(--text)') + '">' + r[0] + (isBest ? ' ✓' : '') + '</div>'
+        + '<div style="width:90px;text-align:right;font-variant-numeric:tabular-nums;color:var(--accent-2);font-weight:700">' + fmtBytes(r[1]) + '</div>'
+        + '<div style="flex:1;font-size:12px;color:var(--muted)">' + r[2] + '</div>'
+        + '</div>';
+    });
+    html += '</div>';
+    const win = mem.best;
+    const note = win === 'mps'
+      ? 'MPS wins here: low entanglement (small bond dimension) compresses the state — even when amplitudes are dense.'
+      : win === 'sparse'
+        ? 'Sparse wins here: most amplitudes are zero. Note this collapses once gates fill the state in.'
+        : 'Dense wins here: the state is both full and highly entangled — no representation beats it.';
+    html += '<p class="muted-note" style="margin-top:10px">' + note + '</p>';
+    host.innerHTML = html;
+  }
+
+  function refresh(){ try{ renderMemBar(); renderMemBadge(); }catch(e){ console.warn('mem-readout', e); } }
+
+  // Re-run the readout after any circuit-changing action.
+  ['renderGrid','placeGate','removeOp','addCol','setQubits','clearCircuit','finishTwo'].forEach(fn => {
+    if(typeof window[fn] === 'function'){
+      const orig = window[fn];
+      window[fn] = function(){ const r = orig.apply(this, arguments); setTimeout(refresh, 0); return r; };
+    }
+  });
+
+  // Capture the real statevector size from the backend simulation response.
+  if(typeof window.renderResult === 'function'){
+    const origRR = window.renderResult;
+    window.renderResult = function(d){
+      try{ if(d && d.amplitudes) window.__lastMeasuredBytes = d.amplitudes.length * BYTES_PER_AMP; }catch(e){}
+      const r = origRR.apply(this, arguments);
+      try{ if(d && d.memory) renderMemCompare(d.memory); }catch(e){ console.warn('mem-compare', e); }
+      setTimeout(refresh, 0);
+      return r;
+    };
+  }
+
+  window.__memRefresh = refresh;
+  window.addEventListener('load', refresh);
+  if(document.readyState !== 'loading') setTimeout(refresh, 0);
+})();
 </script>
 </body>
 </html>
